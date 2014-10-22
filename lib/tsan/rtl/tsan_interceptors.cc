@@ -110,9 +110,14 @@ struct sigaction_t {
     sighandler_t sa_handler;
     void (*sa_sigaction)(int sig, my_siginfo_t *siginfo, void *uctx);
   };
+#if SANITIZER_FREEBSD
+  int sa_flags;
+  __sanitizer_sigset_t sa_mask;
+#else
   __sanitizer_sigset_t sa_mask;
   int sa_flags;
   void (*sa_restorer)();
+#endif
 };
 
 const sighandler_t SIG_DFL = (sighandler_t)0;
@@ -391,7 +396,11 @@ static void SetJmp(ThreadState *thr, uptr sp, uptr mangled_sp) {
 }
 
 static void LongJmp(ThreadState *thr, uptr *env) {
+#if SANITIZER_FREEBSD
+  uptr mangled_sp = env[2];
+#else
   uptr mangled_sp = env[6];
+#endif  // SANITIZER_FREEBSD
   // Find the saved buf by mangled_sp.
   for (uptr i = 0; i < thr->jmp_bufs.Size(); i++) {
     JmpBuf *buf = &thr->jmp_bufs[i];
