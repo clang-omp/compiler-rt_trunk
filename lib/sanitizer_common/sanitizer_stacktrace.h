@@ -30,25 +30,35 @@ static const uptr kStackTraceMax = 256;
 #endif
 
 struct StackTrace {
-  typedef bool (*SymbolizeCallback)(const void *pc, char *out_buffer,
-                                     int out_size);
-  uptr top_frame_bp;
+  const uptr *trace;
   uptr size;
-  uptr trace[kStackTraceMax];
+
+  StackTrace() : trace(nullptr), size(0) {}
+  StackTrace(const uptr *trace, uptr size) : trace(trace), size(size) {}
 
   // Prints a symbolized stacktrace, followed by an empty line.
-  static void PrintStack(const uptr *addr, uptr size);
-  void Print() const {
-    PrintStack(trace, size);
-  }
+  void Print() const;
 
-  void CopyFrom(const uptr *src, uptr src_size) {
-    top_frame_bp = 0;
-    size = src_size;
-    if (size > kStackTraceMax) size = kStackTraceMax;
-    for (uptr i = 0; i < size; i++)
-      trace[i] = src[i];
+  u32 hash() const {
+    // murmur2
+    const u32 m = 0x5bd1e995;
+    const u32 seed = 0x9747b28c;
+    const u32 r = 24;
+    u32 h = seed ^ (size * sizeof(uptr));
+    for (uptr i = 0; i < size; i++) {
+      u32 k = trace[i];
+      k *= m;
+      k ^= k >> r;
+      k *= m;
+      h *= m;
+      h ^= k;
+    }
+    h ^= h >> 13;
+    h *= m;
+    h ^= h >> 15;
+    return h;
   }
+  bool is_valid() const { return size > 0 && trace; }
 
   static bool WillUseFastUnwind(bool request_fast_unwind) {
     // Check if fast unwind is available. Fast unwind is the only option on Mac.
@@ -62,11 +72,21 @@ struct StackTrace {
     return request_fast_unwind;
   }
 
-  void Unwind(uptr max_depth, uptr pc, uptr bp, void *context, uptr stack_top,
-              uptr stack_bottom, bool request_fast_unwind);
-
   static uptr GetCurrentPc();
   static uptr GetPreviousInstructionPc(uptr pc);
+  typedef bool (*SymbolizeCallback)(const void *pc, char *out_buffer,
+                                    int out_size);
+};
+
+// StackTrace that owns the buffer used to store the addresses.
+struct BufferedStackTrace : public StackTrace {
+  uptr trace_buffer[kStackTraceMax];
+  uptr top_frame_bp;  // Optional bp of a top frame.
+
+  BufferedStackTrace() : StackTrace(trace_buffer, 0), top_frame_bp(0) {}
+
+  void Unwind(uptr max_depth, uptr pc, uptr bp, void *context, uptr stack_top,
+              uptr stack_bottom, bool request_fast_unwind);
 
  private:
   void FastUnwindStack(uptr pc, uptr bp, uptr stack_top, uptr stack_bottom,
