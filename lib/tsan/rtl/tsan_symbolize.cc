@@ -46,7 +46,8 @@ ReportStack *NewReportStackEntry(uptr addr) {
 
 static ReportStack *NewReportStackEntry(const AddressInfo &info) {
   ReportStack *ent = NewReportStackEntry(info.address);
-  ent->module = StripModuleName(info.module);
+  if (info.module)
+    ent->module = internal_strdup(info.module);
   ent->offset = info.module_offset;
   if (info.function)
     ent->func = internal_strdup(info.function);
@@ -56,17 +57,6 @@ static ReportStack *NewReportStackEntry(const AddressInfo &info) {
   ent->col = info.column;
   return ent;
 }
-
-
-  ReportStack *next;
-  char *module;
-  uptr offset;
-  uptr pc;
-  char *func;
-  char *file;
-  int line;
-  int col;
-
 
 // Denotes fake PC values that come from JIT/JAVA/etc.
 // For such PC values __tsan_symbolize_external() will be called.
@@ -138,7 +128,8 @@ ReportLocation *SymbolizeData(uptr addr) {
                                                         sizeof(ReportLocation));
   internal_memset(ent, 0, sizeof(*ent));
   ent->type = ReportLocationGlobal;
-  ent->module = StripModuleName(info.module);
+  if (info.module)
+    ent->module = internal_strdup(info.module);
   ent->offset = info.module_offset;
   if (info.name)
     ent->name = internal_strdup(info.name);
