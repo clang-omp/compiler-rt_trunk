@@ -113,7 +113,7 @@ static int AppendPointer(char **buff, const char *buff_end, u64 ptr_value) {
   int result = 0;
   result += AppendString(buff, buff_end, -1, "0x");
   result += AppendUnsigned(buff, buff_end, ptr_value, 16,
-                           (SANITIZER_WORDSIZE == 64) ? 12 : 8, true);
+                           SANITIZER_POINTER_FORMAT_LENGTH, true);
   return result;
 }
 
@@ -253,9 +253,11 @@ static void SharedPrintfCode(bool append_pid, const char *format,
     needed_length = 0;
     if (append_pid) {
       int pid = internal_getpid();
-      needed_length += internal_snprintf(buffer, buffer_size, "==%d==", pid);
+      const char *pname = StripModuleName(GetBinaryName());
+      needed_length += internal_snprintf(buffer, buffer_size,
+                                         "==%s %d==", pname, pid);
       if (needed_length >= buffer_size) {
-        // The pid doesn't fit into the current buffer.
+        // Process name + pid do not fit into the current buffer.
         if (!use_mmap)
           continue;
         RAW_CHECK_MSG(needed_length < kLen, "Buffer in Report is too short!\n");
