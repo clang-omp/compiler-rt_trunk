@@ -24,7 +24,7 @@
 
 namespace __tsan {
 
-#if !defined(TSAN_GO)
+#if !defined(SANITIZER_GO)
 
 /*
 C/C++ on linux and freebsd
@@ -102,7 +102,7 @@ static USED uptr UserRegions[] = {
   kHeapMemBeg,  kHeapMemEnd,
 };
 
-#elif defined(TSAN_GO) && !SANITIZER_WINDOWS
+#elif defined(SANITIZER_GO) && !SANITIZER_WINDOWS
 
 /* Go on linux, darwin and freebsd
 0000 0000 1000 - 0000 1000 0000: executable
@@ -164,7 +164,7 @@ static USED uptr UserRegions[] = {
   kAppMemBeg, kAppMemEnd,
 };
 
-#elif defined(TSAN_GO) && SANITIZER_WINDOWS
+#elif defined(SANITIZER_GO) && SANITIZER_WINDOWS
 
 /* Go on windows
 0000 0000 1000 - 0000 1000 0000: executable
@@ -251,7 +251,6 @@ uptr ALWAYS_INLINE GetThreadTraceHeader(int tid) {
 void InitializePlatform();
 void FlushShadowMemory();
 void WriteMemoryProfile(char *buf, uptr buf_size, uptr nthread, uptr nlive);
-uptr GetRSS();
 
 void *internal_start_thread(void(*func)(void*), void *arg);
 void internal_join_thread(void *th);
