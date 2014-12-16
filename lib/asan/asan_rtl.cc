@@ -56,8 +56,6 @@ static void AsanDie() {
   }
   if (common_flags()->coverage)
     __sanitizer_cov_dump();
-  if (death_callback)
-    death_callback();
   if (flags()->abort_on_error)
     Abort();
   internal__exit(flags()->exitcode);
@@ -73,8 +71,6 @@ static void AsanCheckFailed(const char *file, int line, const char *cond,
 }
 
 // -------------------------- Flags ------------------------- {{{1
-static const int kDefaultMallocContextSize = 30;
-
 Flags asan_flags_dont_use_directly;  // use via flags().
 
 static const char *MaybeCallAsanDefaultOptions() {
@@ -95,7 +91,6 @@ static const char *MaybeUseAsanDefaultOptionsCompileDefinition() {
 static void ParseFlagsFromString(Flags *f, const char *str) {
   CommonFlags *cf = common_flags();
   ParseCommonFlagsFromString(cf, str);
-  CHECK((uptr)cf->malloc_context_size <= kStackTraceMax);
   // Please write meaningful flag descriptions when adding new flags.
   ParseFlag(str, &f->quarantine_size, "quarantine_size",
             "Size (in bytes) of quarantine used to detect use-after-free "
@@ -324,7 +319,8 @@ void InitializeFlags(Flags *f, const char *env) {
   if (f->strict_init_order) {
     f->check_initialization_order = true;
   }
-  CHECK_LE(flags()->min_uar_stack_size_log, flags()->max_uar_stack_size_log);
+  CHECK_LE((uptr)cf->malloc_context_size, kStackTraceMax);
+  CHECK_LE(f->min_uar_stack_size_log, f->max_uar_stack_size_log);
 }
 
 // Parse flags that may change between startup and activation.
@@ -341,7 +337,6 @@ void ParseExtraActivationFlags() {
 // -------------------------- Globals --------------------- {{{1
 int asan_inited;
 bool asan_init_is_running;
-void (*death_callback)(void);
 
 #if !ASAN_FIXED_MAPPING
 uptr kHighMemEnd, kMidMemBeg, kMidMemEnd;
@@ -575,6 +570,8 @@ static void AsanInitInternal() {
   const char *options = GetEnv("ASAN_OPTIONS");
   InitializeFlags(flags(), options);
 
+  SetMallocContextSize(common_flags()->malloc_context_size);
+
   InitializeHighMemEnd();
 
   // Make sure we are not statically linked.
@@ -660,6 +657,8 @@ static void AsanInitInternal() {
 
   InitializeAllocator(common_flags()->allocator_may_return_null,
                       flags()->quarantine_size);
+
+  MaybeStartBackgroudThread();
 
   // On Linux AsanThread::ThreadStart() calls malloc() that's why asan_inited
   // should be set to 1 prior to initializing the threads.
@@ -767,7 +766,7 @@ void NOINLINE __asan_handle_no_return() {
 }
 
 void NOINLINE __asan_set_death_callback(void (*callback)(void)) {
-  death_callback = callback;
+  SetUserDieCallback(callback);
 }
 
 // Initialize as requested from instrumented application code.

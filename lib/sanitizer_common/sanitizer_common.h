@@ -245,6 +245,7 @@ bool SanitizerGetThreadName(char *name, int max_len);
 // to do tool-specific job.
 typedef void (*DieCallbackType)(void);
 void SetDieCallback(DieCallbackType);
+void SetUserDieCallback(DieCallbackType);
 DieCallbackType GetDieCallback();
 typedef void (*CheckFailedCallbackType)(const char *, int, const char *,
                                        u64, u64);
@@ -555,6 +556,10 @@ INLINE void AndroidLogWrite(const char *buffer_unused) {}
 INLINE void GetExtraActivationFlags(char *buf, uptr size) { *buf = '\0'; }
 INLINE void SanitizerInitializeUnwinder() {}
 #endif
+
+void *internal_start_thread(void(*func)(void*), void *arg);
+void internal_join_thread(void *th);
+void MaybeStartBackgroudThread();
 
 // Make the compiler think that something is going on there.
 // Use this inside a loop that looks like memset/memcpy/etc to prevent the
