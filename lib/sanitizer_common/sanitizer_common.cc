@@ -12,12 +12,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_common.h"
+#include "sanitizer_allocator_internal.h"
 #include "sanitizer_flags.h"
 #include "sanitizer_libc.h"
+#include "sanitizer_placement_new.h"
+#include "sanitizer_symbolizer.h"
 
 namespace __sanitizer {
 
 const char *SanitizerToolName = "SanitizerTool";
+
+atomic_uint32_t current_verbosity;
 
 uptr GetPageSizeCached() {
   static uptr PageSize;
@@ -129,8 +134,8 @@ void NORETURN CheckFailed(const char *file, int line, const char *cond,
   Die();
 }
 
-uptr ReadFileToBuffer(const char *file_name, char **buff,
-                      uptr *buff_size, uptr max_len) {
+uptr ReadFileToBuffer(const char *file_name, char **buff, uptr *buff_size,
+                      uptr max_len, int *errno_p) {
   uptr PageSize = GetPageSizeCached();
   uptr kMinFileLen = PageSize;
   uptr read_len = 0;
@@ -139,7 +144,7 @@ uptr ReadFileToBuffer(const char *file_name, char **buff,
   // The files we usually open are not seekable, so try different buffer sizes.
   for (uptr size = kMinFileLen; size <= max_len; size *= 2) {
     uptr openrv = OpenFile(file_name, /*write*/ false);
-    if (internal_iserror(openrv)) return 0;
+    if (internal_iserror(openrv, errno_p)) return 0;
     fd_t fd = openrv;
     UnmapOrDie(*buff, *buff_size);
     *buff = (char*)MmapOrDie(size, __func__);
@@ -149,6 +154,10 @@ uptr ReadFileToBuffer(const char *file_name, char **buff,
     bool reached_eof = false;
     while (read_len + PageSize <= size) {
       uptr just_read = internal_read(fd, *buff + read_len, PageSize);
+      if (internal_iserror(just_read, errno_p)) {
+        UnmapOrDie(*buff, *buff_size);
+        return 0;
+      }
       if (just_read == 0) {
         reached_eof = true;
         break;
@@ -198,12 +207,12 @@ const char *StripPathPrefix(const char *filepath,
                             const char *strip_path_prefix) {
   if (filepath == 0) return 0;
   if (strip_path_prefix == 0) return filepath;
-  const char *pos = internal_strstr(filepath, strip_path_prefix);
-  if (pos == 0) return filepath;
-  pos += internal_strlen(strip_path_prefix);
-  if (pos[0] == '.' && pos[1] == '/')
-    pos += 2;
-  return pos;
+  const char *res = filepath;
+  if (const char *pos = internal_strstr(filepath, strip_path_prefix))
+    res = pos + internal_strlen(strip_path_prefix);
+  if (res[0] == '.' && res[1] == '/')
+    res += 2;
+  return res;
 }
 
 const char *StripModuleName(const char *module) {
@@ -222,35 +231,46 @@ void ReportErrorSummary(const char *error_message) {
   __sanitizer_report_error_summary(buff.data());
 }
 
-void ReportErrorSummary(const char *error_type, const char *file,
-                        int line, const char *function) {
+void ReportErrorSummary(const char *error_type, const AddressInfo &info) {
   if (!common_flags()->print_summary)
     return;
   InternalScopedString buff(kMaxSummaryLength);
-  buff.append("%s %s:%d %s", error_type,
-              file ? StripPathPrefix(file, common_flags()->strip_path_prefix)
-                   : "??",
-              line, function ? function : "??");
+  buff.append(
+      "%s %s:%d", error_type,
+      info.file ? StripPathPrefix(info.file, common_flags()->strip_path_prefix)
+                : "??",
+      info.line);
+  if (info.column > 0)
+    buff.append(":%d", info.column);
+  buff.append(" %s", info.function ? info.function : "??");
   ReportErrorSummary(buff.data());
 }
 
 LoadedModule::LoadedModule(const char *module_name, uptr base_address) {
   full_name_ = internal_strdup(module_name);
   base_address_ = base_address;
-  n_ranges_ = 0;
+  ranges_.clear();
+}
+
+void LoadedModule::clear() {
+  InternalFree(full_name_);
+  while (!ranges_.empty()) {
+    AddressRange *r = ranges_.front();
+    ranges_.pop_front();
+    InternalFree(r);
+  }
 }
 
 void LoadedModule::addAddressRange(uptr beg, uptr end, bool executable) {
-  CHECK_LT(n_ranges_, kMaxNumberOfAddressRanges);
-  ranges_[n_ranges_].beg = beg;
-  ranges_[n_ranges_].end = end;
-  exec_[n_ranges_] = executable;
-  n_ranges_++;
+  void *mem = InternalAlloc(sizeof(AddressRange));
+  AddressRange *r = new(mem) AddressRange(beg, end, executable);
+  ranges_.push_back(r);
 }
 
 bool LoadedModule::containsAddress(uptr address) const {
-  for (uptr i = 0; i < n_ranges_; i++) {
-    if (ranges_[i].beg <= address && address < ranges_[i].end)
+  for (Iterator iter = ranges(); iter.hasNext();) {
+    const AddressRange *r = iter.next();
+    if (r->beg <= address && address < r->end)
       return true;
   }
   return false;
@@ -270,6 +290,48 @@ void IncreaseTotalMmap(uptr size) {
 void DecreaseTotalMmap(uptr size) {
   if (!common_flags()->mmap_limit_mb) return;
   atomic_fetch_sub(&g_total_mmaped, size, memory_order_relaxed);
+}
+
+bool TemplateMatch(const char *templ, const char *str) {
+  if (str == 0 || str[0] == 0)
+    return false;
+  bool start = false;
+  if (templ && templ[0] == '^') {
+    start = true;
+    templ++;
+  }
+  bool asterisk = false;
+  while (templ && templ[0]) {
+    if (templ[0] == '*') {
+      templ++;
+      start = false;
+      asterisk = true;
+      continue;
+    }
+    if (templ[0] == '$')
+      return str[0] == 0 || asterisk;
+    if (str[0] == 0)
+      return false;
+    char *tpos = (char*)internal_strchr(templ, '*');
+    char *tpos1 = (char*)internal_strchr(templ, '$');
+    if (tpos == 0 || (tpos1 && tpos1 < tpos))
+      tpos = tpos1;
+    if (tpos != 0)
+      tpos[0] = 0;
+    const char *str0 = str;
+    const char *spos = internal_strstr(str, templ);
+    str = spos + internal_strlen(templ);
+    templ = tpos;
+    if (tpos)
+      tpos[0] = tpos == tpos1 ? '$' : '*';
+    if (spos == 0)
+      return false;
+    if (start && spos != str0)
+      return false;
+    start = false;
+    asterisk = false;
+  }
+  return true;
 }
 
 }  // namespace __sanitizer

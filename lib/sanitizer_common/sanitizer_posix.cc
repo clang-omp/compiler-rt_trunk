@@ -20,6 +20,7 @@
 #include "sanitizer_procmaps.h"
 #include "sanitizer_stacktrace.h"
 
+#include <signal.h>
 #include <sys/mman.h>
 
 #if SANITIZER_LINUX
@@ -28,6 +29,13 @@
 
 #if SANITIZER_LINUX && !SANITIZER_ANDROID
 #include <sys/personality.h>
+#endif
+
+#if SANITIZER_FREEBSD
+// The MAP_NORESERVE define has been removed in FreeBSD 11.x, and even before
+// that, it was never implemented.  So just define it to zero.
+#undef  MAP_NORESERVE
+#define MAP_NORESERVE 0
 #endif
 
 namespace __sanitizer {
@@ -40,7 +48,7 @@ uptr GetMmapGranularity() {
 #if SANITIZER_WORDSIZE == 32
 // Take care of unusable kernel area in top gigabyte.
 static uptr GetKernelAreaSize() {
-#if SANITIZER_LINUX
+#if SANITIZER_LINUX && !SANITIZER_X32
   const uptr gbyte = 1UL << 30;
 
   // Firstly check if there are writable segments
@@ -72,22 +80,21 @@ static uptr GetKernelAreaSize() {
   return gbyte;
 #else
   return 0;
-#endif  // SANITIZER_LINUX
+#endif  // SANITIZER_LINUX && !SANITIZER_X32
 }
 #endif  // SANITIZER_WORDSIZE == 32
 
 uptr GetMaxVirtualAddress() {
 #if SANITIZER_WORDSIZE == 64
-# if defined(__powerpc64__)
+# if defined(__powerpc64__) || defined(__aarch64__)
   // On PowerPC64 we have two different address space layouts: 44- and 46-bit.
   // We somehow need to figure out which one we are using now and choose
   // one of 0x00000fffffffffffUL and 0x00003fffffffffffUL.
   // Note that with 'ulimit -s unlimited' the stack is moved away from the top
   // of the address space, so simply checking the stack address is not enough.
   // This should (does) work for both PowerPC64 Endian modes.
+  // Similarly, aarch64 has multiple address space layouts: 39, 42 and 47-bit.
   return (1ULL << (MostSignificantSetBitIndex(GET_CURRENT_FRAME()) + 1)) - 1;
-# elif defined(__aarch64__)
-  return (1ULL << 39) - 1;
 # elif defined(__mips64)
   return (1ULL << 40) - 1;  // 0x000000ffffffffffUL;
 # else
@@ -238,7 +245,8 @@ bool MemoryRangeIsAvailable(uptr range_start, uptr range_end) {
   while (proc_maps.Next(&start, &end,
                         /*offset*/0, /*filename*/0, /*filename_size*/0,
                         /*protection*/0)) {
-    if (!IntervalsAreSeparate(start, end, range_start, range_end))
+    CHECK_NE(0, end);
+    if (!IntervalsAreSeparate(start, end - 1, range_start, range_end))
       return false;
   }
   return true;
@@ -286,6 +294,14 @@ char *FindPathToBinary(const char *name) {
   return 0;
 }
 
+bool IsPathSeparator(const char c) {
+  return c == '/';
+}
+
+bool IsAbsolutePath(const char *path) {
+  return path != nullptr && IsPathSeparator(path[0]);
+}
+
 void ReportFile::Write(const char *buffer, uptr length) {
   SpinMutexLock l(mu);
   static const char *kWriteError =
@@ -310,6 +326,13 @@ bool GetCodeRangeForFile(const char *module, uptr *start, uptr *end) {
     }
   }
   return false;
+}
+
+SignalContext SignalContext::Create(void *siginfo, void *context) {
+  uptr addr = (uptr)((siginfo_t*)siginfo)->si_addr;
+  uptr pc, sp, bp;
+  GetPcSpBp(context, &pc, &sp, &bp);
+  return SignalContext(context, addr, pc, sp, bp);
 }
 
 }  // namespace __sanitizer
