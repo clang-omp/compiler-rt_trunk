@@ -31,7 +31,8 @@ if(APPLE)
     add_compiler_rt_darwin_dynamic_runtime(clang_rt.ubsan_${os}_dynamic ${os}
       ARCH ${UBSAN_SUPPORTED_ARCH}
       SOURCES $<TARGET_OBJECTS:RTUbsan.${os}>
-              $<TARGET_OBJECTS:RTSanitizerCommon.${os}>)
+              $<TARGET_OBJECTS:RTSanitizerCommon.${os}>
+      LINKFLAGS -lc++abi)
 
     add_dependencies(ubsan clang_rt.ubsan_${os}_dynamic)
   endforeach()
