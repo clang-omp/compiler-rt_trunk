@@ -395,11 +395,11 @@ static __declspec(allocate(".CRT$XID")) int (*__run_atexit)() = RunAtexit;
 #endif
 
 // ------------------ sanitizer_libc.h
-uptr internal_close(fd_t fd) {
+fd_t OpenFile(const char *filename, FileAccessMode mode, error_t *last_error) {
   UNIMPLEMENTED();
 }
 
-fd_t OpenFile(const char *filename, FileAccessMode mode, error_t *last_error) {
+void CloseFile(fd_t fd) {
   UNIMPLEMENTED();
 }
 
@@ -457,30 +457,6 @@ uptr internal_write(fd_t fd, const void *buf, uptr count) {
       return internal_write(fd, buf, count);
   }
   return 0;
-}
-
-uptr internal_stat(const char *path, void *buf) {
-  UNIMPLEMENTED();
-}
-
-uptr internal_lstat(const char *path, void *buf) {
-  UNIMPLEMENTED();
-}
-
-uptr internal_fstat(fd_t fd, void *buf) {
-  UNIMPLEMENTED();
-}
-
-uptr internal_filesize(fd_t fd) {
-  UNIMPLEMENTED();
-}
-
-uptr internal_dup2(int oldfd, int newfd) {
-  UNIMPLEMENTED();
-}
-
-uptr internal_readlink(const char *path, char *buf, uptr bufsize) {
-  UNIMPLEMENTED();
 }
 
 uptr internal_sched_yield() {

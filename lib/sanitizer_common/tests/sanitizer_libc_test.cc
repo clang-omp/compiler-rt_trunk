@@ -17,6 +17,7 @@
 #if SANITIZER_LINUX || SANITIZER_MAC
 # define SANITIZER_TEST_HAS_STAT_H 1
 # include <sys/stat.h>
+# include "sanitizer_common/sanitizer_posix.h"
 #else
 # define SANITIZER_TEST_HAS_STAT_H 0
 #endif
@@ -82,7 +83,7 @@ TEST(SanitizerCommon, FileOps) {
   ASSERT_NE(fd, kInvalidFd);
   EXPECT_EQ(len1, internal_write(fd, str1, len1));
   EXPECT_EQ(len2, internal_write(fd, str2, len2));
-  internal_close(fd);
+  CloseFile(fd);
 
   fd = OpenFile(tmpfile, RdOnly);
   ASSERT_NE(fd, kInvalidFd);
@@ -113,7 +114,7 @@ TEST(SanitizerCommon, FileOps) {
   internal_memset(buf, 0, len1);
   EXPECT_EQ(len2, internal_read(fd, buf, len2));
   EXPECT_EQ(0, internal_memcmp(buf, str2, len2));
-  internal_close(fd);
+  CloseFile(fd);
   internal_unlink(tmpfile);
 }
 #endif
@@ -151,7 +152,7 @@ TEST(SanitizerCommon, InternalMmapWithOffset) {
   ASSERT_EQ('A', p[0]);
   ASSERT_EQ('B', p[1]);
 
-  internal_close(fd);
+  CloseFile(fd);
   UnmapOrDie(p, page_size);
   internal_unlink(tmpfile);
 }
