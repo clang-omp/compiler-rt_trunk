@@ -61,8 +61,8 @@ void ReportFile::ReopenIfNecessary() {
   fd = OpenFile(full_path, WrOnly);
   if (fd == kInvalidFd) {
     const char *ErrorMsgPrefix = "ERROR: Can't open file: ";
-    internal_write(kStderrFd, ErrorMsgPrefix, internal_strlen(ErrorMsgPrefix));
-    internal_write(kStderrFd, full_path, internal_strlen(full_path));
+    WriteToFile(kStderrFd, ErrorMsgPrefix, internal_strlen(ErrorMsgPrefix));
+    WriteToFile(kStderrFd, full_path, internal_strlen(full_path));
     Die();
   }
   fd_pid = pid;
@@ -152,8 +152,8 @@ uptr ReadFileToBuffer(const char *file_name, char **buff, uptr *buff_size,
     read_len = 0;
     bool reached_eof = false;
     while (read_len + PageSize <= size) {
-      uptr just_read = internal_read(fd, *buff + read_len, PageSize);
-      if (internal_iserror(just_read, errno_p)) {
+      uptr just_read;
+      if (!ReadFromFile(fd, *buff + read_len, PageSize, &just_read, errno_p)) {
         UnmapOrDie(*buff, *buff_size);
         return 0;
       }

@@ -58,17 +58,14 @@ int internal_snprintf(char *buffer, uptr length, const char *format, ...);
 bool mem_is_zero(const char *mem, uptr size);
 
 // I/O
-const fd_t kInvalidFd = -1;
+const fd_t kInvalidFd = (fd_t)-1;
 const fd_t kStdinFd = 0;
-const fd_t kStdoutFd = 1;
-const fd_t kStderrFd = 2;
+const fd_t kStdoutFd = (fd_t)1;
+const fd_t kStderrFd = (fd_t)2;
 
-uptr internal_read(fd_t fd, void *buf, uptr count);
-uptr internal_write(fd_t fd, const void *buf, uptr count);
 uptr internal_ftruncate(fd_t fd, uptr size);
 
 // OS
-uptr internal_rename(const char *oldpath, const char *newpath);
 void NORETURN internal__exit(int exitcode);
 
 uptr internal_getpid();

@@ -30,10 +30,14 @@ uptr internal_open(const char *filename, int flags);
 uptr internal_open(const char *filename, int flags, u32 mode);
 uptr internal_close(fd_t fd);
 
+uptr internal_read(fd_t fd, void *buf, uptr count);
+uptr internal_write(fd_t fd, const void *buf, uptr count);
+
 // Memory
 uptr internal_mmap(void *addr, uptr length, int prot, int flags,
                    int fd, u64 offset);
 uptr internal_munmap(void *addr, uptr length);
+int internal_mprotect(void *addr, uptr length, int prot);
 
 // OS
 uptr internal_filesize(fd_t fd);  // -1 on error.
@@ -43,6 +47,7 @@ uptr internal_fstat(fd_t fd, void *buf);
 uptr internal_dup2(int oldfd, int newfd);
 uptr internal_readlink(const char *path, char *buf, uptr bufsize);
 uptr internal_unlink(const char *path);
+uptr internal_rename(const char *oldpath, const char *newpath);
 uptr internal_lseek(fd_t fd, OFF_T offset, int whence);
 
 uptr internal_ptrace(int request, int pid, void *addr, void *data);
