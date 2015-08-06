@@ -9,7 +9,7 @@
 
 # Check if compiler-rt is built as a standalone project.
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  project(CompilerRT C CXX)
+  project(CompilerRT C CXX ASM)
   set(COMPILER_RT_STANDALONE_BUILD TRUE)
 else()
   set(COMPILER_RT_STANDALONE_BUILD FALSE)
@@ -139,6 +139,13 @@ string(REPLACE "-" ";" TARGET_TRIPLE_LIST ${COMPILER_RT_TEST_TARGET_TRIPLE})
 list(GET TARGET_TRIPLE_LIST 0 COMPILER_RT_TEST_TARGET_ARCH)
 list(GET TARGET_TRIPLE_LIST 1 COMPILER_RT_TEST_TARGET_OS)
 list(GET TARGET_TRIPLE_LIST 2 COMPILER_RT_TEST_TARGET_ABI)
+# Determine if test target triple is specified explicitly, and doesn't match the
+# default.
+if(NOT COMPILER_RT_TEST_TARGET_TRIPLE STREQUAL TARGET_TRIPLE)
+  set(COMPILER_RT_HAS_EXPLICIT_TEST_TARGET_TRIPLE TRUE)
+else()
+  set(COMPILER_RT_HAS_EXPLICIT_TEST_TARGET_TRIPLE FALSE)
+endif()
 
 if ("${COMPILER_RT_TEST_TARGET_ABI}" STREQUAL "androideabi")
   set(ANDROID 1)
@@ -164,7 +171,7 @@ set(COMPILER_RT_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
 # We support running instrumented tests when we're not cross compiling
 # and target a UNIX-like system or Windows.
 # We can run tests on Android even when we are cross-compiling.
-if(("${CMAKE_HOST_SYSTEM}" STREQUAL "${CMAKE_SYSTEM}" AND (UNIX OR MSVC)) OR ANDROID
+if(("${CMAKE_HOST_SYSTEM}" STREQUAL "${CMAKE_SYSTEM}" AND (UNIX OR WIN32)) OR ANDROID
    OR COMPILER_RT_EMULATOR)
   option(COMPILER_RT_CAN_EXECUTE_TESTS "Can we execute instrumented tests" ON)
 else()
@@ -292,16 +299,18 @@ if(APPLE)
   find_darwin_sdk_dir(IOSSIM_SDK_DIR iphonesimulator)
 
   set(SANITIZER_COMMON_SUPPORTED_OS osx)
-  string(REGEX MATCH "-mmacosx-version-min=([.0-9]+)"
-         MACOSX_VERSION_MIN_FLAG "${CMAKE_CXX_FLAGS}")
-  if(MACOSX_VERSION_MIN_FLAG)
-    set(SANITIZER_MIN_OSX_VERSION "${CMAKE_MATCH_1}")
-  elseif(CMAKE_OSX_DEPLOYMENT_TARGET)
-    set(SANITIZER_MIN_OSX_VERSION ${CMAKE_OSX_DEPLOYMENT_TARGET})
-  else()
-    set(SANITIZER_MIN_OSX_VERSION 10.9)
-    if(IOSSIM_SDK_DIR)
-      list(APPEND SANITIZER_COMMON_SUPPORTED_OS iossim)
+  if(NOT SANITIZER_MIN_OSX_VERSION)
+    string(REGEX MATCH "-mmacosx-version-min=([.0-9]+)"
+           MACOSX_VERSION_MIN_FLAG "${CMAKE_CXX_FLAGS}")
+    if(MACOSX_VERSION_MIN_FLAG)
+      set(SANITIZER_MIN_OSX_VERSION "${CMAKE_MATCH_1}")
+    elseif(CMAKE_OSX_DEPLOYMENT_TARGET)
+      set(SANITIZER_MIN_OSX_VERSION ${CMAKE_OSX_DEPLOYMENT_TARGET})
+    else()
+      set(SANITIZER_MIN_OSX_VERSION 10.9)
+      if(IOSSIM_SDK_DIR)
+        list(APPEND SANITIZER_COMMON_SUPPORTED_OS iossim)
+      endif()
     endif()
   endif()
   if(SANITIZER_MIN_OSX_VERSION VERSION_LESS "10.7")
