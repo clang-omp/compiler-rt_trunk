@@ -57,6 +57,7 @@ if(APPLE)
       OBJECT_LIBS RTUbsan
                   RTUbsan_standalone
                   RTSanitizerCommon
+                  RTSanitizerCommonLibc
       PARENT_TARGET ubsan)
   endif()
 
@@ -94,17 +95,18 @@ else()
       CFLAGS ${UBSAN_CXXFLAGS}
       PARENT_TARGET ubsan)
 
-    foreach(arch ${UBSAN_SUPPORTED_ARCH})
-      if (UNIX AND NOT ${arch} MATCHES "i386|i686")
-        add_sanitizer_rt_symbols(clang_rt.ubsan_standalone-${arch}
-          EXTRA ubsan.syms.extra)
-        add_sanitizer_rt_symbols(clang_rt.ubsan_standalone_cxx-${arch}
-          EXTRA ubsan.syms.extra)
-        add_dependencies(ubsan
-          clang_rt.ubsan_standalone-${arch}-symbols
-          clang_rt.ubsan_standalone_cxx-${arch}-symbols)
-      endif()
-    endforeach()
+    if (UNIX)
+      set(ARCHS_FOR_SYMBOLS ${UBSAN_SUPPORTED_ARCH})
+      list(REMOVE_ITEM ARCHS_FOR_SYMBOLS i386 i686)
+      add_sanitizer_rt_symbols(clang_rt.ubsan_standalone
+        ARCHS ${ARCHS_FOR_SYMBOLS}
+        PARENT_TARGET ubsan
+        EXTRA ubsan.syms.extra)
+      add_sanitizer_rt_symbols(clang_rt.ubsan_standalone_cxx
+        ARCHS ${ARCHS_FOR_SYMBOLS}
+        PARENT_TARGET ubsan
+        EXTRA ubsan.syms.extra)
+    endif()
   endif()
 endif()
 

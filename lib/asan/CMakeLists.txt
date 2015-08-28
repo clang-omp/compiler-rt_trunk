@@ -113,6 +113,7 @@ if(APPLE)
     OBJECT_LIBS RTAsan_dynamic
                 RTInterception
                 RTSanitizerCommon
+                RTSanitizerCommonLibc
                 RTLSanCommon
                 RTUbsan
     CFLAGS ${ASAN_DYNAMIC_CFLAGS}
@@ -189,9 +190,11 @@ else()
       PARENT_TARGET asan)
 
     if (UNIX AND NOT ${arch} MATCHES "i386|i686")
-      add_sanitizer_rt_symbols(clang_rt.asan_cxx-${arch})
+      add_sanitizer_rt_symbols(clang_rt.asan_cxx
+        ARCHS ${arch})
       add_dependencies(asan clang_rt.asan_cxx-${arch}-symbols)
-      add_sanitizer_rt_symbols(clang_rt.asan-${arch} 
+      add_sanitizer_rt_symbols(clang_rt.asan
+        ARCHS ${arch} 
         EXTRA asan.syms.extra)
       add_dependencies(asan clang_rt.asan-${arch}-symbols)
     endif()
